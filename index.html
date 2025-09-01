@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hostel Mess Attendance — Updated</title>
+  <style>
+    :root{--bg:#0b0b0b;--card:#111;--muted:#bdbdbd;--accent:#1f8eed}
+    body{font-family:Inter, system-ui, -apple-system, Roboto, Arial, sans-serif; margin:12px; background:#0f1720; color:#e6eef8}
+    h1{font-size:20px;margin-bottom:8px}
+    nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    nav button{background:transparent;border:1px solid #263043;color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer}
+    .hidden{display:none}
+    .card{background:linear-gradient(180deg,#0b1116, #071018);border:1px solid #232b35;padding:12px;border-radius:10px}
+    input,select,button{font-size:14px}
+    input[type="text"],select{padding:8px;border-radius:8px;border:1px solid #263043;background:#071018;color:#e6eef8}
+    button.primary{background:var(--accent);color:white;border:none;padding:8px 12px;border-radius:8px}
+    table{border-collapse:collapse;width:100%;margin-top:10px;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid #16202a;text-align:left}
+    th{color:var(--muted)}
+    #studentCard{margin-top:10px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    @media (min-width:720px){.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+    @media (max-width:720px){input,select,button{width:100%}}
+    .small{font-size:12px;color:var(--muted)}
+    .danger{color:#ff9b9b}
+    .success{color:#b6f0c2}
+    .searchWrap{display:flex;gap:8px;align-items:center}
+  </style>
+  <!-- xlsx for excel export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+  <h1>🏠 Hostel Mess Attendance System — Enhanced</h1>
+  <nav>
+    <button onclick="showSection('attendance')">Mark Attendance</button>
+    <button onclick="showSection('students')">Manage Students</button>
+    <button onclick="showSection('reports');enterReports()">Reports</button>
+    <button onclick="openSettings()">Settings</button>
+  </nav>
+
+  <!-- Attendance Section -->
+  <div id="attendance" class="card">
+    <h2 style="margin:0 0 8px 0">Mark Attendance</h2>
+    <div class="controls">
+      <input id="studentIdInput" placeholder="Enter Student ID" />
+      <button class="primary" onclick="findStudent()">Find</button>
+      <div class="small">Current meal detection follows hostel timings.</div>
+    </div>
+    <div id="studentCard" class="hidden card" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Students Management -->
+  <div id="students" class="card hidden">
+    <h2 style="margin:0 0 8px 0">Student Management</h2>
+    <div class="cols">
+      <div>
+        <div class="controls">
+          <input id="newId" placeholder="ID (unique)" />
+          <input id="newName" placeholder="Name" />
+          <input id="newHostelId" placeholder="Hostel ID" />
+          <input id="newDept" placeholder="Department" />
+        </div>
+        <div style="margin-top:8px">
+          <button class="primary" onclick="addStudent()">Add Student</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="searchWrap">
+          <input id="studentSearch" placeholder="Search students by id / name / dept" oninput="renderStudents()" />
+          <select id="sortStudents" onchange="renderStudents()">
+            <option value="id">Sort by ID</option>
+            <option value="name">Sort by Name</option>
+            <option value="dept">Sort by Department</option>
+          </select>
+        </div>
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Hostel ID</th><th>Department</th><th>Action</th></tr></thead>
+          <tbody id="studentTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reports Section -->
+  <div id="reports" class="card hidden">
+    <h2 style="margin:0 0 8px 0">Attendance Reports</h2>
+
+    <div class="controls" style="align-items:center">
+      <label class="small">Filter by Date:</label>
+      <select id="dateFilter">
+        <option value="all">All Dates</option>
+      </select>
+
+      <label class="small">Per-student:</label>
+      <select id="studentFilter" onchange="renderReports()">
+        <option value="all">All Students</option>
+      </select>
+
+      <button onclick="renderReports()">Apply</button>
+      <button onclick="downloadExcel()">Download Excel</button>
+    </div>
+
+    <h3 style="margin-top:12px">Attendance Records</h3>
+    <table>
+      <thead><tr><th>Date</th><th>ID</th><th>Name</th><th>Department</th><th>Meal</th></tr></thead>
+      <tbody id="reportTable"></tbody>
+    </table>
+
+    <h3 style="margin-top:12px">Fine Report</h3>
+    <table>
+      <thead><tr><th>Date</th><th>ID</th><th>Name</th><th>Missed Meals</th><th>Fine (₹)</th></tr></thead>
+      <tbody id="fineTable"></tbody>
+    </table>
+    <h3 id="grandTotal"></h3>
+  </div>
+
+  <!-- Settings: sync options -->
+  <div id="settings" class="card hidden">
+    <h2 style="margin:0 0 8px 0">Settings</h2>
+    <p class="small">Data persistence & sync</p>
+    <div>
+      <label><input type="checkbox" id="useIndexedDB" onchange="toggleIndexedDB()" checked /> Use IndexedDB (recommended)</label>
+    </div>
+    <div style="margin-top:8px">
+      <p class="small">Firebase real-time sync (optional). To enable, paste your Firebase config below and call <code>enableFirebase()</code> (see commented area in code).</p>
+      <textarea id="firebaseConfig" style="width:100%;height:110px;background:#071018;color:#e6eef8;border:1px solid #263043;border-radius:8px" placeholder="Paste firebase config as JSON here (optional)"></textarea>
+    </div>
+    <div style="margin-top:8px">
+      <button onclick="clearAllData()" class="danger">Clear all local data</button>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------
+    // Data & Constants
+    // -----------------------
+    let students = [];
+    let attendance = [];
+    const MEALS = ["Breakfast","Lunch","Dinner"];
+    const FINE_PER_MEAL = 50;
+    let indexedDBEnabled = true;
+
+    // Simple IndexedDB wrapper
+    const DB_NAME = 'HostelMessDB';
+    const DB_VERSION = 1;
+    let db = null;
+
+    function openDB(){
+      return new Promise((resolve, reject) => {
+        if(!indexedDBEnabled) return resolve(null);
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = function(e){
+          const _db = e.target.result;
+          if(!_db.objectStoreNames.contains('students')){
+            _db.createObjectStore('students', { keyPath: 'id' });
+          }
+          if(!_db.objectStoreNames.contains('attendance')){
+            const store = _db.createObjectStore('attendance', { keyPath: ['date','id','meal'] });
+            // composite key: date+id+meal to prevent duplicates
+          }
+        };
+        req.onsuccess = function(e){ db = e.target.result; resolve(db); };
+        req.onerror = function(e){ console.error('IndexedDB open error', e); resolve(null); };
+      });
+    }
+
+    function idbPut(storeName, item){
+      return new Promise((resolve) => {
+        if(!db) return resolve(false);
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const r = store.put(item);
+        r.onsuccess = ()=>resolve(true);
+        r.onerror = ()=>resolve(false);
+      });
+    }
+    function idbGetAll(storeName){
+      return new Promise((resolve)=>{
+        if(!db) return resolve([]);
+        const tx = db.transaction(storeName,'readonly');
+        const store = tx.objectStore(storeName);
+        const r = store.getAll();
+        r.onsuccess = ()=>resolve(r.result||[]);
+        r.onerror = ()=>resolve([]);
+      });
+    }
+    function idbDelete(storeName, key){
+      return new Promise((resolve)=>{
+        if(!db) return resolve(false);
+        const tx = db.transaction(storeName,'readwrite');
+        const store = tx.objectStore(storeName);
+        const r = store.delete(key);
+        r.onsuccess = ()=>resolve(true);
+        r.onerror = ()=>resolve(false);
+      });
+    }
+
+    // -----------------------
+    // Persistence: localStorage + optional IndexedDB
+    // -----------------------
+    function saveToLocal(){
+      localStorage.setItem('students', JSON.stringify(students));
+      localStorage.setItem('attendance', JSON.stringify(attendance));
+    }
+    function loadFromLocal(){
+      students = JSON.parse(localStorage.getItem('students') || '[]');
+      attendance = JSON.parse(localStorage.getItem('attendance') || '[]');
+    }
+
+    async function saveToIndexedDB(){
+      if(!db) return;
+      // write students
+      for(const s of students){ await idbPut('students', s); }
+      // write attendance
+      for(const a of attendance){ await idbPut('attendance', {date:a.date,id:a.id,meal:a.meal,name:a.name,department:a.department}); }
+    }
+    async function loadFromIndexedDB(){
+      if(!db) return;
+      const s = await idbGetAll('students');
+      const a = await idbGetAll('attendance');
+      if(s && s.length) students = s;
+      if(a && a.length) attendance = a.map(x=>({date:x.date,id:x.id,meal:x.meal,name:x.name,department:x.department}));
+    }
+
+    // -----------------------
+    // UI Helpers
+    // -----------------------
+    function showSection(id){
+      ['attendance','students','reports','settings'].forEach(x=>document.getElementById(x).classList.add('hidden'));
+      document.getElementById(id).classList.remove('hidden');
+      if(id==='students') renderStudents();
+      if(id==='settings') syncUI();
+    }
+
+    function openSettings(){ showSection('settings'); }
+
+    // Meal detection
+    function getCurrentMeal(now = new Date()){
+      const h = now.getHours(); const m = now.getMinutes(); const time = h*60 + m;
+      const breakfastStart = 7*60+45, breakfastEnd=8*60+45;
+      const lunchStart=12*60, lunchEnd=14*60;
+      const dinnerStart=19*60+45, dinnerEnd=21*60;
+      if(time>=breakfastStart && time<=breakfastEnd) return 'Breakfast';
+      if(time>=lunchStart && time<=lunchEnd) return 'Lunch';
+      if(time>=dinnerStart && time<=dinnerEnd) return 'Dinner';
+      return 'Not Meal Time';
+    }
+
+    // Find student
+    function findStudent(){
+      const id = document.getElementById('studentIdInput').value.trim();
+      const student = students.find(s=>s.id===id);
+      const card = document.getElementById('studentCard');
+      card.classList.remove('hidden');
+      if(!student){ card.innerHTML = '<b>No student found!</b>'; return; }
+      const meal = getCurrentMeal();
+      if(meal==='Not Meal Time'){
+        card.innerHTML = `<p><b>Name:</b> ${student.name}</p>
+          <p><b>Hostel ID:</b> ${student.hostelId}</p>
+          <p><b>Department:</b> ${student.department}</p>
+          <p><b>Current Meal:</b> ${meal}</p>
+          <p class="danger"><b>Attendance marking is disabled right now.</b></p>`;
+      } else {
+        card.innerHTML = `<p><b>Name:</b> ${student.name}</p>
+          <p><b>Hostel ID:</b> ${student.hostelId}</p>
+          <p><b>Department:</b> ${student.department}</p>
+          <p><b>Current Meal:</b> ${meal}</p>
+          <div style=\"margin-top:8px\">\n            <button class=\"primary\" onclick="markAttendance('${student.id}','${student.name}','${student.department}','${meal}')">Mark Present</button>\n            <button style=\"margin-left:8px\" onclick=\"showStudentReport('${student.id}')\">View Student Report</button>\n          </div>`;
+      }
+    }
+
+    // Mark attendance
+    async function markAttendance(id,name,dept,meal){
+      const date = new Date().toLocaleDateString('en-GB');
+      if(attendance.find(a=>a.id===id && a.date===date && a.meal===meal)){
+        alert('Attendance already marked for this meal.'); return;
+      }
+      attendance.push({id,name,department:dept,meal,date});
+      saveToLocal();
+      if(db) await idbPut('attendance',{date,id,meal,name,department:dept});
+      alert('Attendance marked!');
+      document.getElementById('studentCard').classList.add('hidden');
+      renderReports();
+    }
+
+    // Students management
+    async function addStudent(){
+      const id=document.getElementById('newId').value.trim();
+      const name=document.getElementById('newName').value.trim();
+      const hostelId=document.getElementById('newHostelId').value.trim();
+      const department=document.getElementById('newDept').value.trim();
+      if(!id||!name||!hostelId||!department) return alert('Fill all fields');
+      if(students.find(s=>s.id===id)) return alert('Student with this ID already exists');
+      const s = {id,name,hostelId,department};
+      students.push(s);
+      saveToLocal();
+      if(db) await idbPut('students', s);
+      document.getElementById('newId').value=''; document.getElementById('newName').value=''; document.getElementById('newHostelId').value=''; document.getElementById('newDept').value='';
+      renderStudents();
+      populateStudentFilter();
+    }
+
+    async function deleteStudent(id){
+      if(!confirm('Delete student and their attendance records?')) return;
+      students = students.filter(s=>s.id!==id);
+      attendance = attendance.filter(a=>a.id!==id);
+      saveToLocal();
+      if(db){ await idbDelete('students', id); /* remove attendance entries by iterating keys */ }
+      renderStudents();
+      renderReports();
+      populateStudentFilter();
+    }
+
+    function renderStudents(){
+      const tbody=document.getElementById('studentTable'); tbody.innerHTML='';
+      const q = document.getElementById('studentSearch').value.trim().toLowerCase();
+      const sortBy = document.getElementById('sortStudents').value;
+      let list = [...students];
+      if(q) list = list.filter(s=> (s.id||'').toLowerCase().includes(q) || (s.name||'').toLowerCase().includes(q) || (s.department||'').toLowerCase().includes(q) );
+      list.sort((a,b)=>{
+        if(sortBy==='id') return a.id.localeCompare(b.id);
+        if(sortBy==='name') return a.name.localeCompare(b.name);
+        return a.department.localeCompare(b.department);
+      });
+      list.forEach(s=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${s.id}</td><td>${s.name}</td><td>${s.hostelId}</td><td>${s.department}</td><td><button onclick="deleteStudent('${s.id}')">Delete</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // -----------------------
+    // Reports & fines
+    // -----------------------
+    function populateDateFilter(){
+      const dates = [...new Set(attendance.map(a=>a.date))].sort((a,b)=>{ // sort by dd/mm/yyyy => convert
+        const ad = a.split('/').reverse().join('-'); const bd = b.split('/').reverse().join('-');
+        return ad.localeCompare(bd);
+      });
+      const filter = document.getElementById('dateFilter');
+      const prev = filter.value || 'all';
+      filter.innerHTML = '<option value="all">All Dates</option>';
+      dates.forEach(d=>{ filter.innerHTML += `<option value="${d}">${d}</option>`; });
+      filter.value = prev;
+    }
+
+    function populateStudentFilter(){
+      const sel = document.getElementById('studentFilter');
+      const prev = sel.value || 'all';
+      sel.innerHTML = '<option value="all">All Students</option>';
+      students.forEach(s=> sel.innerHTML += `<option value="${s.id}">${s.id} — ${s.name}</option>`);
+      sel.value = prev;
+    }
+
+    function calculateFines(filterDate='all', studentId='all'){
+      // Build a map: date -> id -> presentMeals
+      const map = {};
+      attendance.forEach(a=>{
+        if(filterDate!=='all' && a.date!==filterDate) return;
+        if(studentId!=='all' && a.id!==studentId) return;
+        if(!map[a.date]) map[a.date]={};
+        if(!map[a.date][a.id]) map[a.date][a.id]=[];
+        if(!map[a.date][a.id].includes(a.meal)) map[a.date][a.id].push(a.meal);
+      });
+
+      const fines = [];
+      Object.keys(map).forEach(date=>{
+        students.forEach(s=>{
+          if(studentId!=='all' && s.id!==studentId) return;
+          const present = map[date][s.id] || [];
+          const missed = MEALS.filter(m=>!present.includes(m));
+          if(missed.length){ fines.push({date,id:s.id,name:s.name,missed:missed.join(', '),fine:missed.length*FINE_PER_MEAL}); }
+        });
+      });
+      return fines;
+    }
+
+    function renderReports(){
+      const filterDate=document.getElementById('dateFilter').value;
+      const studentFilter = document.getElementById('studentFilter').value;
+      // render table
+      const tbody=document.getElementById('reportTable'); tbody.innerHTML='';
+      attendance.forEach(a=>{
+        if((filterDate==='all'||a.date===filterDate) && (studentFilter==='all'||a.id===studentFilter)){
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${a.date}</td><td>${a.id}</td><td>${a.name}</td><td>${a.department}</td><td>${a.meal}</td>`;
+          tbody.appendChild(tr);
+        }
+      });
+      // fines
+      const fines = calculateFines(filterDate, studentFilter);
+      const ft = document.getElementById('fineTable'); ft.innerHTML=''; let grand=0;
+      fines.forEach(f=>{ grand += f.fine; const tr=document.createElement('tr'); tr.innerHTML = `<td>${f.date}</td><td>${f.id}</td><td>${f.name}</td><td>${f.missed}</td><td>${f.fine}</td>`; ft.appendChild(tr); });
+      document.getElementById('grandTotal').innerText = 'Grand Total Fine: ₹'+grand;
+    }
+
+    function showStudentReport(studentId){
+      showSection('reports');
+      populateDateFilter(); populateStudentFilter();
+      document.getElementById('studentFilter').value = studentId;
+      renderReports();
+    }
+
+    // per-student quick view
+    function openStudentSummary(id){
+      const recs = attendance.filter(a=>a.id===id);
+      const name = (students.find(s=>s.id===id)||{}).name || id;
+      alert(`Student: ${name}\nTotal attendance records: ${recs.length}`);
+    }
+
+    // -----------------------
+    // Excel Export
+    // -----------------------
+    function downloadExcel(){
+      const wb = XLSX.utils.book_new();
+      const attData = attendance.map(a=>({Date:a.date,ID:a.id,Name:a.name,Department:a.department,Meal:a.meal}));
+      const attWs = XLSX.utils.json_to_sheet(attData);
+      XLSX.utils.book_append_sheet(wb, attWs, 'Attendance');
+
+      const fineRows = calculateFines('all','all').map(f=>({Date:f.date,ID:f.id,Name:f.name,Missed:f.missed,Fine:f.fine}));
+      const fineWs = XLSX.utils.json_to_sheet(fineRows);
+      XLSX.utils.book_append_sheet(wb, fineWs, 'Fines');
+
+      XLSX.writeFile(wb, 'Hostel_Attendance_Report.xlsx');
+    }
+
+    // -----------------------
+    // Settings & Sync toggles
+    // -----------------------
+    async function toggleIndexedDB(){
+      indexedDBEnabled = !!document.getElementById('useIndexedDB').checked;
+      if(indexedDBEnabled){ await openDB(); await saveToIndexedDB(); }
+      else { db = null; }
+      syncUI();
+    }
+
+    function syncUI(){
+      document.getElementById('useIndexedDB').checked = indexedDBEnabled;
+    }
+
+    async function enterReports(){
+      populateDateFilter(); populateStudentFilter(); renderReports();
+    }
+
+    // Clear all data
+    function clearAllData(){
+      if(!confirm('This will delete ALL students and attendance locally. Continue?')) return;
+      students = []; attendance = []; saveToLocal();
+      if(db){ const req = db.setVersion ? db.setVersion(DB_VERSION) : null; /* old browsers */ }
+      renderStudents(); renderReports(); populateStudentFilter(); alert('Cleared');
+    }
+
+    // -----------------------
+    // Startup: load data
+    // -----------------------
+    (async function init(){
+      loadFromLocal();
+      await openDB();
+      if(db) await loadFromIndexedDB();
+      saveToLocal();
+      renderStudents();
+      populateStudentFilter();
+      // keep meal detection accurate if needed
+      setInterval(()=>{/* could update current meal UI if added */}, 60000);
+    })();
+
+    // -----------------------
+    // Optional Firebase integration (commented). To enable:
+    // 1) Add Firebase SDK scripts in the <head> (see firebase docs)
+    // 2) Paste your firebaseConfig JSON into the textarea in Settings
+    // 3) Call enableFirebase() from the console or add a button to call it
+    // -----------------------
+    /*
+    // Example (uncomment & include Firebase scripts):
+    let firebaseApp = null;
+    let dbRef = null;
+    async function enableFirebase(){
+      const cfgText = document.getElementById('firebaseConfig').value.trim();
+      if(!cfgText) return alert('Paste Firebase config JSON in settings first');
+      const cfg = JSON.parse(cfgText);
+      // initialize firebase (requires firebase scripts loaded)
+      firebaseApp = firebase.initializeApp(cfg);
+      dbRef = firebase.database();
+      // Sync students -> firebase
+      dbRef.ref('students').set(students);
+      // Listen for remote changes
+      dbRef.ref('students').on('value', snapshot=>{ const val = snapshot.val(); if(val){ students = Object.values(val); saveToLocal(); renderStudents(); populateStudentFilter(); }});
+      // Similarly for attendance
+      dbRef.ref('attendance').on('value', snapshot=>{ const val = snapshot.val(); if(val){ attendance = Object.values(val); saveToLocal(); renderReports(); }});
+      alert('Firebase sync enabled (please ensure Firebase scripts are included).');
+    }
+    */
+
+    // -----------------------
+    // Utility: show per-student quick report from students table UI
+    // -----------------------
+    function createStudentRowActions(){
+      // left for extension
+    }
+
+  </script>
+</body>
+</html>
